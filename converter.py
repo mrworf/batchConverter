@@ -45,14 +45,13 @@ import sys
 import re
 import os
 import argparse
-import pyinotify
 import subprocess
 import time
 import logging
 from fcntl import fcntl, F_GETFL, F_SETFL
 from os import O_NONBLOCK, read
 
-class DetectMovies(pyinotify.ProcessEvent):
+class DetectMovies():
   supportedExt = [".mkv", ".mp4", ".mov", ".m4v", ".mpeg", ".mpg", ".m2ts"]
   reCrop = re.compile('transcode-video --crop ([0-9]+)\:([0-9]+)\:([0-9]+)\:([0-9]+) .+')
   reTime = re.compile('.* ([0-9\.]+) \% .* ETA ([0-9]{2})h([0-9]{2})m([0-9]{2})s')
@@ -183,8 +182,7 @@ class DetectMovies(pyinotify.ProcessEvent):
     self.src_file = None
     self.dst_file = None
 
-  def process_IN_CLOSE_WRITE(self, event):
-    filename = event.pathname
+  def process(self, filename):
     found = False
     for ext in self.supportedExt:
       if filename.lower().endswith(ext):
@@ -216,16 +214,38 @@ logging.basicConfig(stream=sys.stdout, level=loglevel, format=logformat)
 logging.info("Additional arguments: " + cmdline.transcode_args)
 logging.info("Starting monitoring")
 
-wm = pyinotify.WatchManager()
-wm.add_watch(cmdline.input, pyinotify.IN_CLOSE_WRITE, rec=True)
-
-# event handler
 dm = DetectMovies()
 dm.setOutputFolder(cmdline.output)
 dm.setLogging(logging)
 dm.setArguments(cmdline.transcode_args)
 dm.setDeleteOriginal(cmdline.delete_original)
 
-# notifier
-notifier = pyinotify.Notifier(wm, dm)
-notifier.loop()
+# Start main loop
+lstFiles = {}
+lstProcessed = []
+while True:
+	time.sleep(1)
+	files = os.listdir(cmdline.input)
+	d = []
+	for f in lstFiles:
+		if f not in files:
+			f.append(f)
+
+	for f in d:
+		if f in lstProcessed:
+			del lstProcessed[f]
+
+	for f in files:
+		size = os.path.getsize(cmdline.input + '/' + f)
+		if not os.path.isfile(cmdline.input + '/' + f):
+			continue
+
+		if f in lstFiles and lstFiles[f] == size and f not in lstProcessed:
+			# Transcode it
+			print "File %s didn't change, process it!" % f
+			dm.process(cmdline.input + '/' + f)
+			lstProcessed.append(f)
+			break
+		else:
+			lstFiles[f] = size
+
