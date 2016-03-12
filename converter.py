@@ -48,6 +48,7 @@ import argparse
 import subprocess
 import time
 import logging
+
 from fcntl import fcntl, F_GETFL, F_SETFL
 from os import O_NONBLOCK, read
 
@@ -227,14 +228,16 @@ while True:
 	time.sleep(1)
 	files = os.listdir(cmdline.input)
 	d = []
+	# Figure out which files have disappeared so we don't track them
 	for f in lstFiles:
 		if f not in files:
-			f.append(f)
-
+			d.append(f)
+	# Remove them from tracking
 	for f in d:
 		if f in lstProcessed:
 			del lstProcessed[f]
-
+		del lstFiles[f]
+	# Process newcomers and old favorites
 	for f in files:
 		size = os.path.getsize(cmdline.input + '/' + f)
 		if not os.path.isfile(cmdline.input + '/' + f):
@@ -247,5 +250,6 @@ while True:
 			lstProcessed.append(f)
 			break
 		else:
+			# Just track the change
 			lstFiles[f] = size
 
