@@ -58,6 +58,9 @@ class DetectMovies():
   reTime = re.compile('.* ([0-9\.]+) \% .* ETA ([0-9]{2})h([0-9]{2})m([0-9]{2})s')
   reExt = re.compile('(.+)\.[^\.]+?$')
 
+  def setAutoDeinterlace(self, ad):
+    self.autodeint = ad
+
   def setLogging(self, logging):
     self.log = logging
 
@@ -73,6 +76,29 @@ class DetectMovies():
       self.extra = args.split()
     else:
       self.extra = []
+
+  def detectInterlace(self, filename, sensitivity=100, skip=120):
+    reFrames = re.compile('TFF: +([0-9]+) BFF: +([0-9]+) Progressive: +([0-9]+)')
+
+    cmd = ["ffmpeg", '-filter:v', 'idet', '-ss', str(skip), '-frames:v', str(sensitivity), '-an', '-f', 'rawvideo', '-y', '/dev/null', '-i', filename]
+    p = subprocess.Popen(cmd, stdin=open(os.devnull), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+    interlace = 0
+    progressive = 0
+    ret = []
+    while True:
+      s = p.stdout.readline()
+      if s == '' and p.poll() != None:
+        break
+      s = str(s).strip()
+      if s.startswith('[Parsed_idet_0 @ '):
+        reg = reFrames.search(s)
+        if reg:
+          interlace += (int(reg.group(1)) + int(reg.group(2)))
+          progressive += int(reg.group(3))
+
+    return interlace > 0
+
 
   def detectCropping(self, filename):
     cmd = ["detect-crop", filename]
@@ -114,8 +140,10 @@ class DetectMovies():
       if lr and tb:
         self.log.warning("Either crop top-bottom or left-right ... Confused, ignoring crop")
         crop = {"t" : 0, "b" : 0, "l" : 0, "r" : 0}
-    else:
+    elif len(crops) == 1:
       crop = crops[0]
+    else:
+      crop = {"t" : 0, "b" : 0, "l" : 0, "r" : 0}
     crop = "%d:%d:%d:%d" % (crop["t"], crop["b"], crop["l"], crop["r"])
     self.log.info("Final crop selection is " + crop)
     return crop
@@ -126,6 +154,13 @@ class DetectMovies():
 
     cmd = ["transcode-video", "--crop", crop]
     cmd += self.extra
+
+    # If auto deinterlace is enabled and we found it to trigger, then add correct
+    # parameters to the call.
+    if self.autodeint and self.detectInterlace(filename):
+      self.log.info('Movie requires deinterlace, this will take longer')
+      cmd += ['--filter', 'detelecine']
+
     cmd += [filename]
     cmd += ["-o", destfile]
 
@@ -203,6 +238,7 @@ class DetectMovies():
 parser = argparse.ArgumentParser(description="batchConverter - Convert videos using transcode-video as they are available", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('input', help="Which folder to monitor for videos")
 parser.add_argument('output', help='Where to place converted movies')
+parser.add_argument('-ad', '--auto-deinterlace', default=False, action='store_true', help="Automatically determine if deinterlace is needed")
 parser.add_argument('-ta', '--transcode-args', default="", help='Additional arguments for transcode-video')
 parser.add_argument('-do', '--delete-original', action='store_true', default=False, help='Delete the original after transcoding')
 cmdline = parser.parse_args()
@@ -220,6 +256,7 @@ dm.setOutputFolder(cmdline.output)
 dm.setLogging(logging)
 dm.setArguments(cmdline.transcode_args)
 dm.setDeleteOriginal(cmdline.delete_original)
+dm.setAutoDeinterlace(cmdline.auto_deinterlace)
 
 # Start main loop
 lstFiles = {}
@@ -235,7 +272,7 @@ while True:
 	# Remove them from tracking
 	for f in d:
 		if f in lstProcessed:
-			del lstProcessed[f]
+			lstProcessed.remove(f)
 		del lstFiles[f]
 	# Process newcomers and old favorites
 	for f in files:
