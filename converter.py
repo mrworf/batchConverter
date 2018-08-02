@@ -22,9 +22,6 @@
 # Will be adding a simple webserver to show status of the converter,
 # allowing the user to easily see that status of the tool.
 #
-# Requirements:
-# - pyinotify module (monitor filesystem changes)
-#
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
 # as published by the Free Software Foundation; either version 2
