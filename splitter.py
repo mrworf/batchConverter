@@ -44,6 +44,8 @@ parser.add_argument('--duration', metavar="MINUTES", type=int, default=23, help=
 parser.add_argument('--delta', metavar="MINUTES", type=int, default=1, help="Minimum delta detecting short/long duration")
 parser.add_argument('--debug', action='store_true', default=False, help="Enable debugging (more output)")
 parser.add_argument('--dryrun', action='store_true', default=False, help='Don\'t actually do it, just show me what would happen')
+parser.add_argument('--prefix', default='', help='Add prefix to all created files')
+parser.add_argument('--newname', default='', help='Override the name used for split files (normally uses provided file)')
 parser.add_argument('file', metavar="FILE", help="Which file to split")
 parser.add_argument('output', metavar="OUTPUT", help="Where to save split file")
 cmdline = parser.parse_args()
@@ -222,13 +224,20 @@ else:
   logging.debug('MKVmerge split right before chapters: %s' % repr(cuts))
 
   # Build arguments
-  basename = os.path.splitext(os.path.basename(cmdline.file))[0]
+  basename = cmdline.prefix
+  if cmdline.newname != '':
+    basename += cmdline.newname
+  else:
+    basename += os.path.splitext(os.path.basename(cmdline.file))[0]
   basename = os.path.join(cmdline.output, basename) + "-%02d.mkv"
+
   args = ['mkvmerge', '-o', basename, cmdline.file, '--split', 'chapters:'+','.join(str(x) for x in cuts)]
   if cmdline.dryrun:
     logging.info('Would execute the following:')
     logging.info(' %s' % ' '.join(args))
   else:
+    if not os.path.exists(cmdline.output):
+      os.makedirs(cmdline.output) 
     p = subprocess.Popen(args, stdin=open(os.devnull), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     file = 0
     lastprogress = 'Progress: 0%'
