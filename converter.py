@@ -149,23 +149,24 @@ class DetectMovies():
     m = self.reExt.match(os.path.join(self.output, os.path.basename(filename)))
     destfile = m.group(1) + ".mkv"
 
-    cmd = ["transcode-video", "--crop", crop]
+    cmd = ["transcode-video", '--no-log', "--crop", crop]
     cmd += self.extra
 
     # If auto deinterlace is enabled and we found it to trigger, then add correct
     # parameters to the call.
     if self.autodeint and self.detectInterlace(filename):
-      self.log.info('Movie requires deinterlace, this will take longer')
-      cmd += ['--filter', 'detelecine']
+      self.log.info('Movie has interlacing, this will take longer')
+      cmd += ['--filter', 'decomb']
 
     cmd += [filename]
     cmd += ["-o", destfile]
 
-    p = subprocess.Popen(cmd, bufsize=0, stdin=open(os.devnull), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    p = subprocess.Popen(cmd, stdin=open(os.devnull), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     results = ""
 
     self.log.info('Transcoding "%s"' % filename)
-    self.log.debug('using ' + repr(cmd))
+    self.log.debug('using :')
+    self.log.debug(' '.join(cmd))
     self.status = "Transcoding"
     self.progress = "0.00"
     self.src_file = filename
@@ -182,11 +183,13 @@ class DetectMovies():
       result += buf
       if res:
         res = res[len(res)-1]
-        status = "Transcoding, remaining %s:%s:%s" % (res[1], res[2], res[3])
+        status = "Transcoding, remaining %s:%s:%s (%s %%)" % (res[1], res[2], res[3], res[0])
         self.progress = res[0]
         if status != self.status:
           self.status = status
-          self.log.info(self.status)
+          sys.stderr.write('\r' + self.status)
+          sys.stderr.flush()
+          #self.log.info(self.status)
     if p.returncode != 0:
       self.log.error("Transcoding failed (%d), check logfile \"%s.log\"" % (p.returncode, destfile))
       print result
